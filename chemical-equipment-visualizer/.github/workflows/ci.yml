@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  frontend_build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend deps
+        working-directory: frontend-web
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend-web
+        run: npm test
+
+      - name: Build frontend
+        working-directory: frontend-web
+        run: npm run build
+
+  backend_tests:
+    needs: frontend_build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Run migrations
+        working-directory: backend
+        run: |
+          python manage.py migrate --noinput
+
+      - name: Collect static files
+        working-directory: backend
+        run: |
+          python manage.py collectstatic --noinput
+
+      - name: Run tests
+        working-directory: backend
+        run: |
+          python manage.py test --verbosity=2
+
+  desktop_build:
+    needs: backend_tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install desktop deps
+        working-directory: frontend-desktop
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Package desktop app (PyInstaller with spec)
+        working-directory: frontend-desktop
+        run: |
+          pyinstaller ChemicalVisualizer.spec
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChemicalVisualizer-windows
+          path: frontend-desktop\dist\ChemicalVisualizer.exe
+
+      - name: Run packaged exe smoke test
+        working-directory: frontend-desktop
+        run: |
+          echo Running smoke test
+          .\dist\ChemicalVisualizer.exe --smoke
+
+      - name: Start temporary backend for E2E
+        shell: pwsh
+        run: |
+          Write-Output 'Starting backend for E2E...'
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+          Push-Location backend
+          python manage.py migrate --noinput
+          # write create_demo_user output to repo root for the upload helper
+          python manage.py create_demo_user | Out-File -Encoding utf8 ..\demo_output.txt
+          Pop-Location
+          # start server in background and write PID to file so we can stop it later
+          $proc = Start-Process -NoNewWindow -FilePath python -ArgumentList 'backend\manage.py','runserver','0.0.0.0:8000' -PassThru
+          $proc.Id | Out-File -Encoding ascii ..\backend_server_pid.txt
+          Write-Output "Started backend with PID: $($proc.Id)"
+          # wait for server
+          $attempts = 0
+          while ($attempts -lt 30) {
+            try {
+              $r = Invoke-WebRequest -Uri http://127.0.0.1:8000/status -UseBasicParsing -Method Get -TimeoutSec 3
+              if ($r.StatusCode -eq 200) { Write-Output 'Backend available'; break }
+            } catch {
+              Start-Sleep -s 1
+              $attempts++
+            }
+          }
+
+      - name: Run E2E upload script (Windows)
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          Write-Output 'Running E2E upload using token from create_demo_user output'
+          python -m pip install requests
+          python scripts/ci_e2e_upload.py
+
+      - name: Run packaged exe upload test
+        shell: pwsh
+        working-directory: frontend-desktop
+        run: |
+          Write-Output 'Running packaged exe upload test using token from demo_output.txt'
+          $tokenLine = Select-String -Path ..\demo_output.txt -Pattern 'Token:' | Select-Object -First 1
+          if (-not $tokenLine) { Write-Error 'Token not found in demo_output.txt'; exit 2 }
+          $token = $tokenLine.Line -replace '.*Token:\s*',''
+          Write-Output "Token: $token"
+          # Run exe headless upload
+          .\dist\ChemicalVisualizer.exe --upload-ci --csv ..\frontend-desktop\test_data\sample_upload.csv --token $token --api http://127.0.0.1:8000/api
+
+      - name: Cleanup backend server
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Output 'Stopping temporary backend'
+          if (Test-Path ..\backend_server_pid.txt) {
+            $pid = Get-Content ..\backend_server_pid.txt | Select-Object -First 1
+            try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue; Remove-Item ..\backend_server_pid.txt -ErrorAction SilentlyContinue; Write-Output "Stopped backend (PID $pid)" } catch { Write-Output 'Failed to stop backend process' }
+          } else {
+            Write-Output 'No backend PID file found - nothing to stop'
+          }

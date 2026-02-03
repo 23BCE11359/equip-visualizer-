@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chemical Equipment Visualizer</title>
+
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        #loading {
+            text-align: center;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .filters input,
+        .filters select {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            min-width: 180px;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #007bff;
+            color: white;
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            text-align: center;
+        }
+
+        tr:hover {
+            background: #f1f1f1;
+            cursor: pointer;
+        }
+
+        canvas {
+            height: 300px !important;
+        }
+
+        #modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+        }
+
+        #modal-content {
+            background: white;
+            width: 400px;
+            margin: 100px auto;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        button {
+            padding: 8px 12px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+  <script type="module" crossorigin src="/assets/index-Mn9nl0pb.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DG3BXQw_.css">
+</head>
+
+<body>
+
+<div id="root"></div>
+
+<!-- MODAL -->
+<div id="modal">
+    <div id="modal-content">
+        <h3 id="modal-title"></h3>
+        <p><b>Type:</b> <span id="modal-type"></span></p>
+        <p><b>Material:</b> <span id="modal-material"></span></p>
+        <p><b>Flowrate:</b> <span id="modal-flowrate"></span></p>
+        <p><b>Pressure:</b> <span id="modal-pressure"></span> bar</p>
+        <p><b>Temperature:</b> <span id="modal-temperature"></span> °C</p>
+        <p><b>Description:</b> <span id="modal-description"></span></p>
+        <button onclick="closeModal()">Close</button>
+    </div>
+</div>
+
+<!-- React & Chart.js -->
+<script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- React App -->
+<script type="text/babel" src="app.jsx"></script>
+
+</body>
+</html>

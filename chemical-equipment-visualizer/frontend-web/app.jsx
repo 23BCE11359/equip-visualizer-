@@ -1,21 +1,14 @@
 const { useState, useEffect, useRef } = React;
 
 const API_URL = 'http://127.0.0.1:8000/api/equipment/';
+const AUTH_URL = 'http://127.0.0.1:8000/api-token-auth/'; // Standard DRF Token Auth
 
-function App(){
-  const [token, setToken] = React.useState(localStorage.getItem('token') || '');
-  function saveToken(t){ setToken(t); localStorage.setItem('token', t); }
+function App() {
+  // 1. STATE: Manage Token & Auth
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [loginError, setLoginError] = useState('');
 
-  function login(e){
-    e.preventDefault();
-    const form = e.target;
-    const u = form.username.value; const p = form.password.value;
-    fetch('http://127.0.0.1:8000/api-token-auth/', { method:'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({username:u,password:p}) })
-      .then(r=>r.json())
-      .then(d=>{ if (d.token){ saveToken(d.token); alert('Login successful'); } else alert('Login failed'); })
-      .catch(()=>alert('Login failed'));
-  }
-
+  // 2. STATE: Dashboard Data
   const [data, setData] = useState([]);
   const [next, setNext] = useState(null);
   const [prev, setPrev] = useState(null);
@@ -27,37 +20,86 @@ function App(){
   const [sortDir, setSortDir] = useState('');
   const [loading, setLoading] = useState(false);
   const [modalItem, setModalItem] = useState(null);
+  const [datasets, setDatasets] = useState([]);
 
+  // Refs for Charts
   const pressureRef = useRef();
   const tempRef = useRef();
   const pressureChartRef = useRef(null);
   const tempChartRef = useRef(null);
 
-  const [datasets, setDatasets] = useState([]);
+  // 3. EFFECT: Fetch Data only if Token exists
+  useEffect(() => {
+    if (token) {
+      fetchData(API_URL);
+      fetchDatasets();
+    }
+  }, [token]);
 
-  useEffect(()=>{ fetchData(API_URL); fetchDatasets(); }, []);
+  // 4. AUTH FUNCTIONS
+  function handleLogin(e) {
+    e.preventDefault();
+    const username = e.target.username.value;
+    const password = e.target.password.value;
 
-  function fetchDatasets(){
-    fetch('http://127.0.0.1:8000/api/datasets/')
-      .then(r=>r.json())
-      .then(d=>{ setDatasets(d || []); })
-      .catch(()=>{});
+    fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    })
+    .then(r => {
+      if (!r.ok) throw new Error('Invalid credentials');
+      return r.json();
+    })
+    .then(d => {
+      if (d.token) {
+        setToken(d.token);
+        localStorage.setItem('token', d.token);
+        setLoginError('');
+      }
+    })
+    .catch(err => setLoginError('Login failed: ' + err.message));
   }
 
-  function fetchData(url){
+  function handleLogout() {
+    setToken('');
+    localStorage.removeItem('token');
+    setData([]);
+  }
+
+  // Helper to get Headers
+  function getHeaders() {
+    return token ? { 
+      'Authorization': `Token ${token}`, // Change to 'Bearer ${token}' if using JWT
+      'Content-Type': 'application/json'
+    } : { 'Content-Type': 'application/json' };
+  }
+
+  // 5. DATA FUNCTIONS
+  function fetchDatasets() {
+    fetch('http://127.0.0.1:8000/api/datasets/', { headers: getHeaders() })
+      .then(r => r.json())
+      .then(d => setDatasets(d || []))
+      .catch(console.error);
+  }
+
+  function fetchData(url) {
     setLoading(true);
-    fetch(url)
-      .then(r=>r.json())
-      .then(d=>{
-        setData(d.results||[]);
+    fetch(url, { headers: getHeaders() })
+      .then(r => {
+        if (r.status === 401) { handleLogout(); throw new Error("Unauthorized"); }
+        return r.json();
+      })
+      .then(d => {
+        setData(d.results || []);
         setNext(d.next);
         setPrev(d.previous);
         setLoading(false);
       })
-      .catch(()=>{ setLoading(false); })
+      .catch(() => setLoading(false));
   }
 
-  function applyFilters(){
+  function applyFilters() {
     let params = [];
     if (search) params.push(`search=${encodeURIComponent(search)}`);
     if (pressure) params.push(`pressure__gte=${pressure}`);
@@ -68,8 +110,8 @@ function App(){
     fetchData(u);
   }
 
-  function setSort(field){
-    if (sortField === field){
+  function setSort(field) {
+    if (sortField === field) {
       setSortDir(sortDir === '' ? '-' : '');
     } else {
       setSortField(field);
@@ -78,140 +120,191 @@ function App(){
     setTimeout(applyFilters, 0);
   }
 
-  useEffect(()=>{
-    // draw charts
-    const labels = data.map(d=>d.name);
-    const pressures = data.map(d=>d.pressure);
-    const temps = data.map(d=>d.temperature);
+  // 6. CHART DRAWING
+  useEffect(() => {
+    if (!data.length) return;
+
+    const labels = data.map(d => d.name);
+    const pressures = data.map(d => d.pressure);
+    const temps = data.map(d => d.temperature);
 
     if (pressureChartRef.current) pressureChartRef.current.destroy();
     if (tempChartRef.current) tempChartRef.current.destroy();
 
-    if (pressureRef.current){
+    if (pressureRef.current) {
       pressureChartRef.current = new Chart(pressureRef.current, {
         type: 'bar',
-        data: { labels, datasets: [{ label: 'Pressure', data: pressures }] }
+        data: { labels, datasets: [{ label: 'Pressure', data: pressures, backgroundColor: 'rgba(255, 99, 132, 0.5)' }] }
       });
     }
 
-    if (tempRef.current){
+    if (tempRef.current) {
       tempChartRef.current = new Chart(tempRef.current, {
         type: 'line',
-        data: { labels, datasets: [{ label: 'Temperature', data: temps }] }
+        data: { labels, datasets: [{ label: 'Temperature', data: temps, borderColor: 'rgba(54, 162, 235, 1)', fill: false }] }
       });
     }
   }, [data]);
 
-  function openModal(item){ setModalItem(item); }
-  function closeModal(){ setModalItem(null); }
+  // 7. ACTION HANDLERS
+  function openModal(item) { setModalItem(item); }
+  function closeModal() { setModalItem(null); }
 
-  function exportCSV(){
+  // FIX: Use fetch with blob instead of window.location for Export
+  function exportCSV() {
     let params = [];
     if (search) params.push(`search=${encodeURIComponent(search)}`);
     if (pressure) params.push(`pressure__gte=${pressure}`);
     if (temperature) params.push(`temperature__gte=${temperature}`);
     if (material) params.push(`material=${encodeURIComponent(material)}`);
-    window.location.href = `http://127.0.0.1:8000/api/equipment/export/csv/?${params.join('&')}`;
+    
+    const url = `http://127.0.0.1:8000/api/equipment/export/csv/?${params.join('&')}`;
+
+    fetch(url, { headers: getHeaders() })
+      .then(r => r.blob())
+      .then(blob => {
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = 'equipment_export.csv';
+        link.click();
+      })
+      .catch(() => alert("Export Failed (Auth Error)"));
   }
 
-  function uploadCSV(){
+  function uploadCSV() {
     const input = document.getElementById('csvFile');
-    if (!input.files.length){ alert('Select CSV first'); return; }
+    if (!input.files.length) { alert('Select CSV first'); return; }
+    
     const fd = new FormData();
     fd.append('file', input.files[0]);
-    const headers = token ? { 'Authorization': `Token ${token}` } : {};
+    
+    // Note: Don't set Content-Type header manually for FormData, browser does it with boundary
+    const headers = { 'Authorization': `Token ${token}` }; 
+
     fetch('http://127.0.0.1:8000/api/upload/', { method: 'POST', body: fd, headers })
-      .then(r=>{
+      .then(r => {
         if (!r.ok) throw new Error('Upload failed');
         return r.json();
       })
-      .then(d=>{ alert(`Uploaded; created ${d.created}`); fetchData(API_URL); fetchDatasets(); })
-      .catch(()=>alert('Upload failed'))
+      .then(d => { alert(`Uploaded; created ${d.created}`); fetchData(API_URL); fetchDatasets(); })
+      .catch(() => alert('Upload failed'));
   }
 
-  const materials = [...new Set(data.map(d=>d.material).filter(Boolean))];
+  // --- RENDERING ---
+
+  // RENDER: Login Screen (If no token)
+  if (!token) {
+    return (
+      <div className="container" style={{maxWidth: '400px', marginTop: '100px', textAlign:'center'}}>
+        <div className="card">
+          <h2>🔐 Login Required</h2>
+          <form onSubmit={handleLogin}>
+            <div style={{marginBottom: 10}}>
+              <input name="username" placeholder="Username" style={{width:'100%', padding: 10}} required />
+            </div>
+            <div style={{marginBottom: 10}}>
+              <input name="password" placeholder="Password" type="password" style={{width:'100%', padding: 10}} required />
+            </div>
+            <button type="submit" style={{width:'100%'}}>Login</button>
+            {loginError && <p style={{color:'red', marginTop: 10}}>{loginError}</p>}
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // RENDER: Dashboard (If token exists)
+  const materials = [...new Set(data.map(d => d.material).filter(Boolean))];
 
   return (
     <div className="container">
-      <h2>Chemical Equipment Visualizer</h2>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <h2>Chemical Equipment Visualizer</h2>
+        <button onClick={handleLogout} style={{background: '#dc3545'}}>Logout</button>
+      </div>
+      
       {loading ? <p id="loading">🔄 Loading...</p> : null}
 
       <div className="filters">
         <input type="file" id="csvFile" accept=".csv" />
         <button onClick={uploadCSV}>⬆ Upload CSV</button>
 
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name" />
-        <input value={pressure} onChange={e=>setPressure(e.target.value)} type="number" placeholder="Min Pressure" />
-        <input value={temperature} onChange={e=>setTemperature(e.target.value)} type="number" placeholder="Min Temperature" />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name" />
+        <input value={pressure} onChange={e => setPressure(e.target.value)} type="number" placeholder="Min Pressure" />
+        <input value={temperature} onChange={e => setTemperature(e.target.value)} type="number" placeholder="Min Temperature" />
 
-        <select value={material} onChange={e=>setMaterial(e.target.value)}>
+        <select value={material} onChange={e => setMaterial(e.target.value)}>
           <option value="">All Materials</option>
-          {materials.map(m=> <option key={m} value={m}>{m}</option>)}
+          {materials.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
 
         <button onClick={applyFilters}>Apply</button>
-
-        <form onSubmit={login} style={{display:'inline-block', marginLeft: 10}}>
-          <input name="username" placeholder="username" />
-          <input name="password" placeholder="password" type="password" />
-          <button type="submit">Login</button>
-        </form>
       </div>
 
-      <div className="card" style={{textAlign: 'right'}}>
+      <div className="card" style={{ textAlign: 'right' }}>
         <button onClick={exportCSV}>⬇ Export CSV</button>
       </div>
 
       <div className="card">
         <label>Datasets:</label>
-        <select id="datasetSelect">
+        <select id="datasetSelect" style={{marginLeft: 10, marginRight: 10}}>
           <option value="">-- Select Dataset --</option>
           {datasets.map(ds => <option key={ds.id} value={ds.id}>{ds.name} ({ds.equipment_count})</option>)}
         </select>
-        <button onClick={()=>{
-            const s = document.getElementById('datasetSelect').value; if(!s){ alert('Select dataset'); return; }
-            // download report
-            const headers = token ? { 'Authorization': `Token ${token}` } : {};
-            fetch(`http://127.0.0.1:8000/api/datasets/${s}/report/pdf/`, { headers })
-              .then(res=>{
-                if (res.status === 501) { alert('Server does not support PDF generation (reportlab missing).'); return null; }
-                if (res.status === 401 || res.status === 403){ alert('Authentication required for report. Please login.'); return null; }
+        
+        <button onClick={() => {
+            const s = document.getElementById('datasetSelect').value;
+            if (!s) { alert('Select dataset'); return; }
+            
+            // Download PDF Report
+            fetch(`http://127.0.0.1:8000/api/datasets/${s}/report/pdf/`, { headers: getHeaders() })
+              .then(res => {
+                if (res.status === 501) { alert('Server missing PDF library.'); return null; }
+                if (res.status === 401 || res.status === 403) { 
+                    alert('Session expired. Logging out...'); 
+                    handleLogout();
+                    return null; 
+                }
+                if (!res.ok) throw new Error('Download failed');
                 return res.blob();
               })
-              .then(blob=>{
+              .then(blob => {
                 if (!blob) return;
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url; a.download = `dataset_${s}.pdf`; a.click();
+                a.href = url;
+                a.download = `dataset_${s}.pdf`;
+                a.click();
               })
-              .catch(()=> alert('Failed to download report'));
+              .catch(err => console.error(err));
         }}>Download Report</button>
       </div>
 
-      <div className="card">
-        <h3>Pressure (bar)</h3>
-        <canvas ref={pressureRef}></canvas>
-      </div>
-
-      <div className="card">
-        <h3>Temperature (°C)</h3>
-        <canvas ref={tempRef}></canvas>
+      <div style={{display:'flex', gap: 20}}>
+        <div className="card" style={{flex:1}}>
+          <h3>Pressure (bar)</h3>
+          <canvas ref={pressureRef}></canvas>
+        </div>
+        <div className="card" style={{flex:1}}>
+          <h3>Temperature (°C)</h3>
+          <canvas ref={tempRef}></canvas>
+        </div>
       </div>
 
       <div className="card">
         <table>
           <thead>
             <tr>
-              <th onClick={()=>setSort('name')}>Name ⬍</th>
-              <th onClick={()=>setSort('type')}>Type ⬍</th>
-              <th onClick={()=>setSort('material')}>Material ⬍</th>
-              <th onClick={()=>setSort('pressure')}>Pressure ⬍</th>
-              <th onClick={()=>setSort('temperature')}>Temperature ⬍</th>
+              <th onClick={() => setSort('name')}>Name ⬍</th>
+              <th onClick={() => setSort('type')}>Type ⬍</th>
+              <th onClick={() => setSort('material')}>Material ⬍</th>
+              <th onClick={() => setSort('pressure')}>Pressure ⬍</th>
+              <th onClick={() => setSort('temperature')}>Temperature ⬍</th>
             </tr>
           </thead>
           <tbody>
-            {data.length === 0 ? <tr><td colSpan={5}>No equipment found</td></tr> : data.map(item=> (
-              <tr key={item.id} onClick={()=>openModal(item)}>
+            {data.length === 0 ? <tr><td colSpan={5}>No equipment found</td></tr> : data.map(item => (
+              <tr key={item.id} onClick={() => openModal(item)}>
                 <td>{item.name}</td>
                 <td>{item.type}</td>
                 <td>{item.material}</td>
@@ -223,14 +316,14 @@ function App(){
         </table>
       </div>
 
-      <div className="card" style={{textAlign: 'center'}}>
-        <button disabled={!prev} onClick={()=>prev && fetchData(prev)}>⬅ Previous</button>
-        <button disabled={!next} onClick={()=>next && fetchData(next)}>Next ➡</button>
+      <div className="card" style={{ textAlign: 'center' }}>
+        <button disabled={!prev} onClick={() => prev && fetchData(prev)}>⬅ Previous</button>
+        <button disabled={!next} onClick={() => next && fetchData(next)}>Next ➡</button>
       </div>
 
       {modalItem ? (
-        <div id="modal" style={{display:'block', position:'fixed', inset:0, background:'rgba(0,0,0,0.5)'}} onClick={closeModal}>
-          <div id="modal-content" style={{background:'white', width:400, margin:'100px auto', padding:20}} onClick={e=>e.stopPropagation()}>
+        <div id="modal" style={{ display: 'block', position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)' }} onClick={closeModal}>
+          <div id="modal-content" style={{ background: 'white', width: 400, margin: '100px auto', padding: 20, borderRadius: 8 }} onClick={e => e.stopPropagation()}>
             <h3>{modalItem.name}</h3>
             <p><b>Type:</b> {modalItem.type}</p>
             <p><b>Material:</b> {modalItem.material}</p>
@@ -247,4 +340,4 @@ function App(){
   );
 }
 
-ReactDOM.render(<App/>, document.getElementById('root'));
+ReactDOM.render(<App />, document.getElementById('root'));

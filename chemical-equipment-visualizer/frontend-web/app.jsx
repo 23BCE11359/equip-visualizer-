@@ -1,7 +1,10 @@
 const { useState, useEffect, useRef } = React;
 
-const API_URL = 'http://127.0.0.1:8000/api/equipment/';
-const AUTH_URL = 'http://127.0.0.1:8000/api-token-auth/'; // Standard DRF Token Auth
+// Get the URL from Vercel (or use localhost if running locally)
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+const API_URL = `${BASE_URL}/api/equipment/`;
+const AUTH_URL = `${BASE_URL}/api-token-auth/`;
 
 function App() {
   // 1. STATE: Manage Token & Auth
@@ -77,7 +80,7 @@ function App() {
 
   // 5. DATA FUNCTIONS
   function fetchDatasets() {
-    fetch('http://127.0.0.1:8000/api/datasets/', { headers: getHeaders() })
+    fetch(`${BASE_URL}/api/datasets/`, { headers: getHeaders() })
       .then(r => r.json())
       .then(d => setDatasets(d || []))
       .catch(console.error);
@@ -158,7 +161,7 @@ function App() {
     if (temperature) params.push(`temperature__gte=${temperature}`);
     if (material) params.push(`material=${encodeURIComponent(material)}`);
     
-    const url = `http://127.0.0.1:8000/api/equipment/export/csv/?${params.join('&')}`;
+    const url = `${BASE_URL}/api/equipment/export/csv/?${params.join('&')}`;
 
     fetch(url, { headers: getHeaders() })
       .then(r => r.blob())
@@ -181,7 +184,7 @@ function App() {
     // Note: Don't set Content-Type header manually for FormData, browser does it with boundary
     const headers = { 'Authorization': `Token ${token}` }; 
 
-    fetch('http://127.0.0.1:8000/api/upload/', { method: 'POST', body: fd, headers })
+    fetch(`${BASE_URL}/api/upload/`, { method: 'POST', body: fd, headers })
       .then(r => {
         if (!r.ok) throw new Error('Upload failed');
         return r.json();
@@ -257,7 +260,7 @@ function App() {
             if (!s) { alert('Select dataset'); return; }
             
             // Download PDF Report
-            fetch(`http://127.0.0.1:8000/api/datasets/${s}/report/pdf/`, { headers: getHeaders() })
+            fetch(`${BASE_URL}/api/datasets/${s}/report/pdf/`, { headers: getHeaders() })
               .then(res => {
                 if (res.status === 501) { alert('Server missing PDF library.'); return null; }
                 if (res.status === 401 || res.status === 403) { 

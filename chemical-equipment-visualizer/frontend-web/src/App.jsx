@@ -133,7 +133,7 @@ export default function App(){
           <div className="logo">CE</div>
           <div>
             <div className="title">Chemical Equipment Visualizer</div>
-            <div className="subtitle">Upload CSVs, explore equipment, and generate reports — with a friendly interface.</div>
+            <div className="subtitle">Upload CSVs, explore equipment, and generate reports.</div>
           </div>
         </div>
         <div className="actions">

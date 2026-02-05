@@ -106,11 +106,3 @@ Run Django tests (backend):
 - PDF report generation requires `reportlab` — without it the endpoint returns 501.
 - Authentication is provided by DRF Basic and Session; for scripted or desktop auth flows consider adding token-based auth.
 
----
-
-If you'd like, I can:
-- Convert the web UI to a full React project (Vite recommended) — includes build configs and CORS handling
-- Create a PR and run CI so the Windows packaging & headless E2E upload steps are validated on GitHub Actions
-- Add automated visual/GUI tests for the desktop app (Windows) and add integration tests that run the packaged EXE in CI
-- Add a short 2–3 minute demo recording (I can produce a screencast if you prefer)
-
